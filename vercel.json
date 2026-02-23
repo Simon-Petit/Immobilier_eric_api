@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/write-comparables.py": {
+      "maxDuration": 60
+    }
+  }
+}
