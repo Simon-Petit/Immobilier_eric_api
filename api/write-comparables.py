@@ -9,6 +9,7 @@ import cgi
 from io import BytesIO
 import os
 import sys
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,6 +25,13 @@ class handler(BaseHTTPRequestHandler):
         try:
             content_type = self.headers.get("Content-Type", "")
             content_length = int(self.headers.get("Content-Length", 0))
+
+            # Basic request logging for debugging in Vercel logs
+            print("---- /api/write-comparables request ----")
+            print("Method:", self.command)
+            print("Path:", self.path)
+            print("Content-Type:", content_type)
+            print("Content-Length:", content_length)
 
             if content_length == 0:
                 self.send_error(400, "Missing body")
@@ -41,10 +49,26 @@ class handler(BaseHTTPRequestHandler):
                 keep_blank_values=True,
             )
 
+            # Log parsed form fields
+            try:
+                form_keys = list(form.keys())
+            except Exception:
+                form_keys = []
+            print("Form field names:", form_keys)
+
             wb_field = form.get("workbook")
-            data_field = form.get("data")
-            if not wb_field or not data_field:
-                self.send_error(400, "Missing workbook or data field")
+            # Accept both legacy "data" and newer "comparables_array" field names
+            data_field = form.get("data") or form.get("comparables_array")
+
+            print("Has workbook field:", bool(wb_field))
+            print("Has data/comparables_array field:", bool(data_field))
+
+            if not wb_field:
+                self.send_error(400, "Missing workbook field 'workbook'")
+                return
+
+            if not data_field:
+                self.send_error(400, "Missing JSON field 'data' or 'comparables_array'")
                 return
 
             if hasattr(wb_field, "file"):
@@ -63,6 +87,7 @@ class handler(BaseHTTPRequestHandler):
             for i, comparable in enumerate(payload):
                 sheet_name = f"Comparable_{i + 1}"
                 if sheet_name not in wb.sheetnames:
+                    print(f"Sheet {sheet_name} not found in workbook, skipping")
                     continue
                 ws = wb[sheet_name]
                 ws["C1"] = "Oui"
@@ -83,6 +108,10 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(result)
 
         except json.JSONDecodeError as e:
-            self.send_error(400, f"Invalid JSON in data: {e}")
+            print("JSON decode error in /api/write-comparables:", repr(e))
+            traceback.print_exc()
+            self.send_error(400, f"Invalid JSON in data/comparables_array: {e}")
         except Exception as e:
+            print("Unhandled error in /api/write-comparables:", repr(e))
+            traceback.print_exc()
             self.send_error(500, str(e))
