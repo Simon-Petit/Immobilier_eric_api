@@ -16,6 +16,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import openpyxl
 
 
+def apply_comparables(workbook_bytes: bytes, data_str: str) -> bytes:
+    """
+    Pure function: take workbook bytes + JSON string, return modified workbook bytes.
+
+    This is used both by the Vercel handler and by local test scripts.
+    """
+    if isinstance(data_str, bytes):
+        data_str = data_str.decode("utf-8")
+
+    payload = json.loads(data_str)
+    wb = openpyxl.load_workbook(BytesIO(workbook_bytes))
+
+    for i, comparable in enumerate(payload):
+        sheet_name = f"Comparable_{i + 1}"
+        if sheet_name not in wb.sheetnames:
+            print(f"Sheet {sheet_name} not found in workbook, skipping")
+            continue
+        ws = wb[sheet_name]
+        ws["C1"] = "Oui"
+        for field in comparable:
+            if field.get("value") is not None:
+                ws[field["cell"]] = field["value"]
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/api/write-comparables" and not self.path.endswith("write-comparables"):
@@ -84,27 +113,9 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             data_str = data_field.value if hasattr(data_field, "value") else data_field
-            if isinstance(data_str, bytes):
-                data_str = data_str.decode("utf-8")
 
-            payload = json.loads(data_str)
-            wb = openpyxl.load_workbook(BytesIO(workbook_bytes))
-
-            for i, comparable in enumerate(payload):
-                sheet_name = f"Comparable_{i + 1}"
-                if sheet_name not in wb.sheetnames:
-                    print(f"Sheet {sheet_name} not found in workbook, skipping")
-                    continue
-                ws = wb[sheet_name]
-                ws["C1"] = "Oui"
-                for field in comparable:
-                    if field.get("value") is not None:
-                        ws[field["cell"]] = field["value"]
-
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
-            result = output.getvalue()
+            # Delegate to pure function for easier local testing
+            result = apply_comparables(workbook_bytes, data_str)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
