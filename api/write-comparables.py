@@ -56,9 +56,15 @@ class handler(BaseHTTPRequestHandler):
                 form_keys = []
             print("Form field names:", form_keys)
 
-            wb_field = form.get("workbook")
+            # cgi.FieldStorage is dict-like but does NOT implement .get()
+            wb_field = form["workbook"] if "workbook" in form else None
             # Accept both legacy "data" and newer "comparables_array" field names
-            data_field = form.get("data") or form.get("comparables_array")
+            if "data" in form:
+                data_field = form["data"]
+            elif "comparables_array" in form:
+                data_field = form["comparables_array"]
+            else:
+                data_field = None
 
             print("Has workbook field:", bool(wb_field))
             print("Has data/comparables_array field:", bool(data_field))
