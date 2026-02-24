@@ -8,14 +8,40 @@ Requirements:
     - A sample workbook file available locally (default: ../Evaluation_Immobiliere.xlsx)
     - Python dependencies from requirements.txt installed
 
+
 This script does NOT run on Vercel; it's only for local debugging.
 """
 
 import json
-import os
+from io import BytesIO
 from pathlib import Path
 
-from api.write_comparables import apply_comparables  # type: ignore
+import openpyxl
+
+
+def apply_comparables(workbook_bytes: bytes, data_str: str) -> bytes:
+    """Same logic as api/write-comparables.py — inlined to avoid loading HTTP deps."""
+    if isinstance(data_str, bytes):
+        data_str = data_str.decode("utf-8")
+
+    payload = json.loads(data_str)
+    wb = openpyxl.load_workbook(BytesIO(workbook_bytes))
+
+    for i, comparable in enumerate(payload):
+        sheet_name = f"Comparable_{i + 1}"
+        if sheet_name not in wb.sheetnames:
+            print(f"  Sheet {sheet_name} not found in workbook, skipping")
+            continue
+        ws = wb[sheet_name]
+        ws["C1"] = "Oui"
+        for field in comparable:
+            if field.get("value") is not None:
+                ws[field["cell"]] = field["value"]
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
 
 
 def main() -> None:
